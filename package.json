@@ -12,9 +12,6 @@
   },
   "engine": [ "node >=0.4.0" ],
   "main": "build/default/gzbz2",
-  "modules": {
-    "gunzipstream": "./gunzipstream",
-    "bunzipstream": "./bunzipstream"},
   "directories.lib": "build/default/",
   "scripts": {
      "build" : "node-waf configure build",
