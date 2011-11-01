@@ -955,7 +955,7 @@ class Bunzip : public EventEmitter {
 
 extern "C" void init(Handle<Object> target) {
   HandleScope scope;
-  #ifdef  WITH_BZIP
+  #ifdef  WITH_GZIP
   Gzip::Initialize(target);
   Gunzip::Initialize(target);
   #endif//WITH_GZIP
