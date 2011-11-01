@@ -213,8 +213,8 @@ class Gzip : public EventEmitter {
       THROW_IF_NOT_A (written == len, "GzipDeflate.DecodeWrite: %zd != %zd", written, len);
     }
 
-    char* out;
-    int r, out_size;
+    char* out = NULL;
+    int r, out_size = 0;
     try {
       r = gzip->GzipDeflate(buf, len, &out, &out_size);
     } catch( const std::string & msg ) {
@@ -223,22 +223,28 @@ class Gzip : public EventEmitter {
     THROW_IF_NOT_A (r >= 0, "gzip deflate: error(%d) %s", r, gzip->strm.msg);
     THROW_IF_NOT_A (out_size >= 0, "gzip deflate: negative output size: %d", out_size);
 
+    Handle<Value> returnVal;
+    
     if (gzip->use_buffers) {
       // output compressed data in a buffer
       Buffer* b = Buffer::New(out_size);
       if (out_size != 0) {
         memcpy(BufferData(b), out, out_size);
-        free(out);
       }
-      return scope.Close(b->handle_);
+      returnVal = scope.Close(b->handle_);
     } else if (out_size == 0) {
-      return scope.Close(String::Empty());
+      returnVal = scope.Close(String::Empty());
     } else {
       // output compressed data in a binary string
       Local<Value> outString = Encode(out, out_size, gzip->encoding);
-      free(out);
-      return scope.Close(outString);
+      returnVal = scope.Close(outString);
     }
+    
+    if (out != NULL) {
+        free(out);
+    }
+    
+    return returnVal;
   }
 
   static Handle<Value> GzipEnd(const Arguments& args) {
@@ -246,7 +252,7 @@ class Gzip : public EventEmitter {
 
     HandleScope scope;
 
-    char* out;
+    char* out = NULL;
     int r, out_size;
     try {
       r = gzip->GzipEnd(&out, &out_size);
@@ -256,22 +262,28 @@ class Gzip : public EventEmitter {
     THROW_IF_NOT_A (r >= 0, "gzip end: error(%d) %s", r, gzip->strm.msg);
     THROW_IF_NOT_A (out_size >= 0, "gzip end: negative output size: %d", out_size);
 
+    Handle<Value> returnVal;
+    
     if (gzip->use_buffers) {
       // output compressed data in a buffer
       Buffer* b = Buffer::New(out_size);
       if (out_size != 0) {
         memcpy(BufferData(b), out, out_size);
-        free(out);
       }
-      return scope.Close(b->handle_);
+      returnVal = scope.Close(b->handle_);
     } else if (out_size == 0) {
-      return scope.Close(String::Empty());
+      returnVal = scope.Close(String::Empty());
     } else {
       // output compressed data in a binary string
       Local<Value> outString = Encode(out, out_size, gzip->encoding);
-      free(out);
-      return scope.Close(outString);
+      returnVal = scope.Close(outString);
     }
+    
+    if (out != NULL) {
+        free(out);
+    }
+    
+    return returnVal;
   }
 
   Gzip() : EventEmitter(), use_buffers(true), encoding(BINARY) {
@@ -649,7 +661,7 @@ class Bzip : public EventEmitter {
       THROW_IF_NOT_A (written == len, "BzipDeflate.DecodeWrite: %zd != %zd", written, len);
     }
 
-    char* out;
+    char* out = NULL;
     int r, out_size;
     try {
       r = bzip->BzipDeflate(buf, len, &out, &out_size);
@@ -659,22 +671,28 @@ class Bzip : public EventEmitter {
     THROW_IF_NOT_A (r >= 0, "bzip deflate: error(%d)", r);
     THROW_IF_NOT_A (out_size >= 0, "bzip deflate: negative output size: %d", out_size);
 
+    Handle<Value> returnVal;
+    
     if (bzip->use_buffers) {
       // output compressed data in a buffer
       Buffer* b = Buffer::New(out_size);
       if (out_size != 0) {
         memcpy(BufferData(b), out, out_size);
-        free(out);
       }
-      return scope.Close(b->handle_);
+      returnVal = scope.Close(b->handle_);
     } else if (out_size == 0) {
-      return scope.Close(String::Empty());
+      returnVal = scope.Close(String::Empty());
     } else {
       // output compressed data in a binary string
       Local<Value> outString = Encode(out, out_size, bzip->encoding);
-      free(out);
-      return scope.Close(outString);
+      returnVal = scope.Close(outString);
     }
+    
+    if (out != NULL) {
+        free(out);
+    }
+    
+    return returnVal;
   }
 
   static Handle<Value> BzipEnd(const Arguments& args) {
@@ -682,7 +700,7 @@ class Bzip : public EventEmitter {
 
     HandleScope scope;
 
-    char* out;
+    char* out = NULL;
     int r, out_size;
     try {
       r = bzip->BzipEnd(&out, &out_size);
@@ -692,22 +710,28 @@ class Bzip : public EventEmitter {
     THROW_IF_NOT_A (r >= 0, "bzip end: error(%d)", r);
     THROW_IF_NOT_A (out_size >= 0, "bzip end: negative output size: %d", out_size);
 
+    Handle<Value> returnVal;
+    
     if (bzip->use_buffers) {
       // output compressed data in a buffer
       Buffer* b = Buffer::New(out_size);
       if (out_size != 0) {
         memcpy(BufferData(b), out, out_size);
-        free(out);
       }
-      return scope.Close(b->handle_);
+      returnVal = scope.Close(b->handle_);
     } else if (out_size == 0) {
-      return scope.Close(String::Empty());
+      returnVal = scope.Close(String::Empty());
     } else {
       // output compressed data in a binary string
       Local<Value> outString = Encode(out, out_size, bzip->encoding);
-      free(out);
-      return scope.Close(outString);
+      returnVal = scope.Close(outString);
     }
+    
+    if (out != NULL) {
+        free(out);
+    }
+    
+    return returnVal;
   }
 
   Bzip() : EventEmitter(), use_buffers(true), encoding(BINARY) {
