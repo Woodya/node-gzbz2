@@ -437,7 +437,7 @@ class Gunzip : public EventEmitter {
       THROW_IF_NOT_A (written == len, "GunzipInflate.DecodeWrite: %zd != %zd", written, len);
     }
 
-    char* out;
+    char* out = NULL;
     int r, out_size;
     try {
       r = gunzip->GunzipInflate(buf, len, &out, &out_size);
@@ -447,22 +447,28 @@ class Gunzip : public EventEmitter {
     THROW_IF_NOT_A (r >= 0, "gunzip inflate: error(%d) %s", r, gunzip->strm.msg);
     THROW_IF_NOT_A (out_size >= 0, "gunzip inflate: negative output size: %d", out_size);
 
+    Handle<Value> returnVal;
+    
     if (gunzip->use_buffers) {
       // output decompressed data in a buffer
       Buffer* b = Buffer::New(out_size);
       if (out_size != 0) {
         memcpy(BufferData(b), out, out_size);
-        free(out);
       }
-      return scope.Close(b->handle_);
+      returnVal = scope.Close(b->handle_);
     } else if (out_size == 0) {
-      return scope.Close(String::Empty());
+      returnVal = scope.Close(String::Empty());
     } else {
       // output decompressed data in an encoded string
       Local<Value> outString = Encode(out, out_size, gunzip->encoding);
-      free(out);
-      return scope.Close(outString);
+      returnVal = scope.Close(outString);
     }
+    
+    if (out != NULL) {
+        free(out);
+    }
+    
+    return returnVal;    
   }
 
   static Handle<Value> GunzipEnd(const Arguments& args) {
@@ -887,7 +893,7 @@ class Bunzip : public EventEmitter {
       THROW_IF_NOT_A(written == len, "BunzipInflate.DecodeWrite: %zd != %zd", written, len);
     }
 
-    char* out;
+    char* out = NULL;
     int r, out_size;
     try {
       r = bunzip->BunzipInflate(buf, len, &out, &out_size);
@@ -897,22 +903,28 @@ class Bunzip : public EventEmitter {
     THROW_IF_NOT_A (r >= 0, "bunzip inflate: error(%d)", r);
     THROW_IF_NOT_A (out_size >= 0, "bunzip inflate: negative output size: %d", out_size);
 
+    Handle<Value> returnVal;
+    
     if (bunzip->use_buffers) {
       // output decompressed data in a buffer
       Buffer* b = Buffer::New(out_size);
       if (out_size != 0) {
         memcpy(BufferData(b), out, out_size);
-        free(out);
       }
-      return scope.Close(b->handle_);
+      returnVal = scope.Close(b->handle_);
     } else if (out_size == 0) {
-      return scope.Close(String::Empty());
+      returnVal = scope.Close(String::Empty());
     } else {
       // output decompressed data in an encoded string
       Local<Value> outString = Encode(out, out_size, bunzip->encoding);
-      free(out);
-      return scope.Close(outString);
+      returnVal = scope.Close(outString);
     }
+    
+    if (out != NULL) {
+        free(out);
+    }
+    
+    return returnVal;
   }
 
   static Handle<Value> BunzipEnd(const Arguments& args) {
