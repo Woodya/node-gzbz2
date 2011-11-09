@@ -1,5 +1,4 @@
 #include <node.h>
-#include <node_events.h>
 #include <assert.h>
 #include <string.h>
 #include <stdlib.h>
@@ -58,19 +57,21 @@ public:
 };
 
 #ifdef  WITH_GZIP
-class Gzip : public EventEmitter {
+class Gzip : public ObjectWrap {
  public:
+  static Persistent<FunctionTemplate> s_ct;
   static void Initialize(v8::Handle<v8::Object> target) {
     HandleScope scope;
 
     Local<FunctionTemplate> t = FunctionTemplate::New(New);
 
-    t->Inherit(EventEmitter::constructor_template);
-    t->InstanceTemplate()->SetInternalFieldCount(1);
+    s_ct = Persistent<FunctionTemplate>::New(t);
+    s_ct->InstanceTemplate()->SetInternalFieldCount(1);
+    s_ct->SetClassName(String::NewSymbol("Gzip"));
 
-    NODE_SET_PROTOTYPE_METHOD(t, "init", GzipInit);
-    NODE_SET_PROTOTYPE_METHOD(t, "deflate", GzipDeflate);
-    NODE_SET_PROTOTYPE_METHOD(t, "end", GzipEnd);
+    NODE_SET_PROTOTYPE_METHOD(s_ct, "init", GzipInit);
+    NODE_SET_PROTOTYPE_METHOD(s_ct, "deflate", GzipDeflate);
+    NODE_SET_PROTOTYPE_METHOD(s_ct, "end", GzipEnd);
 
     target->Set(String::NewSymbol("Gzip"), t->GetFunction());
   }
@@ -279,7 +280,7 @@ class Gzip : public EventEmitter {
     }
   }
 
-  Gzip() : EventEmitter(), use_buffers(true), encoding(BINARY) {
+  Gzip() : ObjectWrap(), use_buffers(true), encoding(BINARY) {
   }
 
   ~Gzip() {
@@ -292,19 +293,23 @@ class Gzip : public EventEmitter {
   enum encoding encoding;
 };
 
-class Gunzip : public EventEmitter {
+Persistent<FunctionTemplate> Gzip::s_ct;
+
+class Gunzip : public ObjectWrap {
  public:
+  static Persistent<FunctionTemplate> s_ct;
   static void Initialize(v8::Handle<v8::Object> target) {
     HandleScope scope;
 
     Local<FunctionTemplate> t = FunctionTemplate::New(New);
 
-    t->Inherit(EventEmitter::constructor_template);
-    t->InstanceTemplate()->SetInternalFieldCount(1);
+    s_ct = Persistent<FunctionTemplate>::New(t);
+    s_ct->InstanceTemplate()->SetInternalFieldCount(1);
+    s_ct->SetClassName(String::NewSymbol("Gunzip"));
 
-    NODE_SET_PROTOTYPE_METHOD(t, "init", GunzipInit);
-    NODE_SET_PROTOTYPE_METHOD(t, "inflate", GunzipInflate);
-    NODE_SET_PROTOTYPE_METHOD(t, "end", GunzipEnd);
+    NODE_SET_PROTOTYPE_METHOD(s_ct, "init", GunzipInit);
+    NODE_SET_PROTOTYPE_METHOD(s_ct, "inflate", GunzipInflate);
+    NODE_SET_PROTOTYPE_METHOD(s_ct, "end", GunzipEnd);
 
     target->Set(String::NewSymbol("Gunzip"), t->GetFunction());
   }
@@ -467,7 +472,7 @@ class Gunzip : public EventEmitter {
     return scope.Close(Undefined());
   }
 
-  Gunzip() : EventEmitter(), use_buffers(true), encoding(BINARY) {
+  Gunzip() : ObjectWrap(), use_buffers(true), encoding(BINARY) {
   }
 
   ~Gunzip() {
@@ -479,23 +484,28 @@ class Gunzip : public EventEmitter {
   bool use_buffers;
   enum encoding encoding;
 };
+
+Persistent<FunctionTemplate> Gunzip::s_ct;
+
 #endif//WITH_GZIP
 
 
 #ifdef  WITH_BZIP
-class Bzip : public EventEmitter {
+class Bzip : public ObjectWrap {
  public:
+  static Persistent<FunctionTemplate> s_ct;
   static void Initialize(v8::Handle<v8::Object> target) {
     HandleScope scope;
 
     Local<FunctionTemplate> t = FunctionTemplate::New(New);
 
-    t->Inherit(EventEmitter::constructor_template);
-    t->InstanceTemplate()->SetInternalFieldCount(1);
+    s_ct = Persistent<FunctionTemplate>::New(t);
+    s_ct->InstanceTemplate()->SetInternalFieldCount(1);
+    s_ct->SetClassName(String::NewSymbol("Bzip"));
 
-    NODE_SET_PROTOTYPE_METHOD(t, "init", BzipInit);
-    NODE_SET_PROTOTYPE_METHOD(t, "deflate", BzipDeflate);
-    NODE_SET_PROTOTYPE_METHOD(t, "end", BzipEnd);
+    NODE_SET_PROTOTYPE_METHOD(s_ct, "init", BzipInit);
+    NODE_SET_PROTOTYPE_METHOD(s_ct, "deflate", BzipDeflate);
+    NODE_SET_PROTOTYPE_METHOD(s_ct, "end", BzipEnd);
 
     target->Set(String::NewSymbol("Bzip"), t->GetFunction());
   }
@@ -706,7 +716,7 @@ class Bzip : public EventEmitter {
     }
   }
 
-  Bzip() : EventEmitter(), use_buffers(true), encoding(BINARY) {
+  Bzip() : ObjectWrap(), use_buffers(true), encoding(BINARY) {
   }
 
   ~Bzip() {
@@ -719,19 +729,23 @@ class Bzip : public EventEmitter {
   enum encoding encoding;
 };
 
-class Bunzip : public EventEmitter {
+Persistent<FunctionTemplate> Bzip::s_ct;
+
+class Bunzip : public ObjectWrap {
  public:
+  static Persistent<FunctionTemplate> s_ct;
   static void Initialize(v8::Handle<v8::Object> target) {
     HandleScope scope;
 
     Local<FunctionTemplate> t = FunctionTemplate::New(New);
 
-    t->Inherit(EventEmitter::constructor_template);
-    t->InstanceTemplate()->SetInternalFieldCount(1);
+    s_ct = Persistent<FunctionTemplate>::New(t);
+    s_ct->InstanceTemplate()->SetInternalFieldCount(1);
+    s_ct->SetClassName(String::NewSymbol("Bunzip"));
 
-    NODE_SET_PROTOTYPE_METHOD(t, "init", BunzipInit);
-    NODE_SET_PROTOTYPE_METHOD(t, "inflate", BunzipInflate);
-    NODE_SET_PROTOTYPE_METHOD(t, "end", BunzipEnd);
+    NODE_SET_PROTOTYPE_METHOD(s_ct, "init", BunzipInit);
+    NODE_SET_PROTOTYPE_METHOD(s_ct, "inflate", BunzipInflate);
+    NODE_SET_PROTOTYPE_METHOD(s_ct, "end", BunzipEnd);
 
     target->Set(String::NewSymbol("Bunzip"), t->GetFunction());
   }
@@ -896,7 +910,7 @@ class Bunzip : public EventEmitter {
     return scope.Close(Undefined());
   }
 
-  Bunzip() : EventEmitter(), use_buffers(true), encoding(BINARY) {
+  Bunzip() : ObjectWrap(), use_buffers(true), encoding(BINARY) {
   }
 
   ~Bunzip() {
@@ -908,6 +922,9 @@ class Bunzip : public EventEmitter {
   bool use_buffers;
   enum encoding encoding;
 };
+
+Persistent<FunctionTemplate> Bunzip::s_ct;
+
 #endif//WITH_BZIP
 
 extern "C" {
