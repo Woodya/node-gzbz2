@@ -28,7 +28,7 @@ Quick Gzip example
 ------------------
 
     var gzbz2 = require("gzbz2");
-    var sys = require("sys");
+    var util = require("util");
 
     // Create gzip stream
     var gzip = new gzbz2.Gzip;
@@ -38,31 +38,30 @@ Quick Gzip example
 
     // Pump data to be compressed
     var gzdata1 = gzip.deflate("My data that needs ", "ascii");
-    sys.puts("Compressed size : "+gzdata1.length);
+    util.puts("Compressed size : "+gzdata1.length);
 
     // treat string as binary encoded
     var gzdata2 = gzip.deflate("to be compressed. 01234567890.");
-    sys.puts("Compressed size : "+gzdata2.length);
+    util.puts("Compressed size : "+gzdata2.length);
 
     var gzdata3 = gzip.end(); // important to capture end data
-    sys.puts("Last bit : "+gzdata3.length);
+    util.puts("Last bit : "+gzdata3.length);
 
     // Normally stream this out as its generated, but just print here
     var gzdata = gzdata1+gzdata2+gzdata3;
-    sys.puts("Total compressed size : "+gzdata.length);
+    util.puts("Total compressed size : "+gzdata.length);
 
 Quick Gunzip example
 --------------------
 
     var gzbz2 = require("gzbz2");
-    var sys = require("sys");
     var fs = require("fs");
 
     var gunzip = new gzbz2.Gunzip;
     gunzip.init({encoding: "utf8"});
 
     var gzdata = fs.readFileSync("somefile.gz", "binary");
-    var inflated = gunzip.inflate(testdata, "binary");
+    var inflated = gunzip.inflate(gzdata, "binary");
     gunzip.end(); // returns nothing
 
 Quick Gunzip Stream example
