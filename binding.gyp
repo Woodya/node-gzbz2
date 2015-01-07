@@ -23,6 +23,30 @@
               }
             }
           }
+        ],
+        ['OS=="mac"',
+          {
+            'include_dirs': ['/opt/local/include'],
+            'libraries': ['-L/opt/local/lib'],
+            'cflags': [ '-Wall', '-O2', '-fexceptions' ],
+            'cflags_cc!': [ '-fno-exceptions' ],
+            'xcode_settings': {
+                'GCC_ENABLE_CPP_EXCEPTIONS': 'YES',
+                'GCC_ENABLE_CPP_RTTI': 'YES'
+            },
+            'defines': [
+              '_FILE_OFFSET_BITS=64',
+              '_LARGEFILE_SOURCE',
+              'WITH_GZIP',
+              'WITH_BZIP'
+            ],
+            'configurations': {
+              'Debug': {
+                'cflags': ['-O0', '-g3'],
+                'cflags!': ['-O2']
+              }
+            }
+          }
         ]
       ]
     },

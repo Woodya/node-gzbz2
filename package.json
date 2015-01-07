@@ -5,7 +5,7 @@
   "bugs": {
     "url": "http://github.com/woodya/node-gzbz2/issues"
   },
-  "version": "0.1.4",
+  "version": "0.2.0",
   "author": "Woody Anderson <woody.anderson@gmail.com>",
   "contributors": [
     "wave.to"
@@ -14,13 +14,13 @@
     "type": "git",
     "url": "git://github.com/woodya/node-gzbz2.git"
   },
-  "main": "build/default/gzbz2",
-  "directories.lib": "build/default/",
+  "main": "build/Release/gzbz2.node",
+  "directories.lib": "build/Release/",
   "scripts": {
-    "build": "node-waf configure build",
-    "test": "node-waf test",
+    "build": "node-gyp configure build",
+    "test": "node test.js",
     "doc": "node-waf doc",
-    "preinstall": "node-waf clean || true; node-waf configure build"
+    "preinstall": "node-gyp clean || true; node-gyp configure build"
   },
   "dependencies": {},
   "devDependencies": {},

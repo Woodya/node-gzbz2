@@ -16,13 +16,13 @@ npm install gzbz2
 
 or
 
-node-waf configure [--no-bzip] [--no-gzip]
+waf way: node-waf configure [--no-bzip] [--no-gzip]
 
-node-waf build
+gyp way: node-gype configure  (no idea how to conditionally configure..)
 
-This will put the gzbz2.node binary module in build/default.
+node-gyp build
 
-Note: on osx, you must run node-waf with python2.6 or greater for configure to work properly.
+Note: on osx, you must run node-waf with python2.6 or greater for configure to work properly. (unsure if this applies to node-gyp)
 
 Quick Gzip example
 ------------------
@@ -80,7 +80,9 @@ Quick Gunzip Stream example
 Versions
 --------
 
-* 0.1.*:
+* 0.2.0:
+    * added ripcurld00d's updates for node-gyp & node\_event.h removal
+* 0.1.\*:
     * added bzip2 support. same interface. Bzip/Bunzip objects, bzip specific init options
         * bzip.init
             * encoding (the output encoding, undefined/null means Buffers)
@@ -100,10 +102,10 @@ Versions
     * deflate accepts a buffer or string[+encoding[default = 'utf8']], output will be a buffer or a string encoded according to init options
     * also added two submodules gunzipstream, and bunzipstream
         * use these to quickly/easily decompress a file while writing similar code to regular input streams
-* 0.0.*:
+* 0.0.\*:
     * all string based, encodings in inflate/deflate methods, no init params
 
 Authors
 -------
 * wave.to: developer of node-compress aka 0.0.1 version and the general framework
-* woody.anderson@gmail.com, fixed bugs/memory leaks, added 0.1.* features: buffers, bzip2, npm as gzbz2, 
+* woody.anderson@gmail.com, fixed bugs/memory leaks, added 0.1.\* features: buffers, bzip2, npm as gzbz2, 
