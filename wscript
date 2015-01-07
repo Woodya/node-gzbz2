@@ -67,5 +67,5 @@ def shutdown(bld):
     if lexists('gzbz2.node'):
       unlink('gzbz2.node')
   elif Options.commands['build']:
-    if exists('build/default/gzbz2.node') and not lexists('gzbz2.node'):
-      symlink('build/default/gzbz2.node', 'gzbz2.node')
+    if exists('build/Release/gzbz2.node') and not lexists('gzbz2.node'):
+      symlink('build/Release/gzbz2.node', 'gzbz2.node')
