@@ -1,3 +1,4 @@
+#include <memory>
 #include <node.h>
 #include <assert.h>
 #include <string.h>
