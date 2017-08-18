@@ -5,6 +5,11 @@
       'libraries': ['-L/usr/lib', '-L/usr/local/lib'],
       'target_name': 'gzbz2',
       'sources': ['compress.cc'],
+      'link_settings': {
+        'libraries': [
+          '-lbz2'
+        ]
+      },
       'conditions': [
         ['OS=="linux"',
           {
