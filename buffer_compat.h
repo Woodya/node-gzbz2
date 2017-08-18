@@ -6,7 +6,7 @@
 #include <node_version.h>
 #include <v8.h>
 
-#if NODE_MINOR_VERSION < 3
+#if NODE_MINOR_VERSION < 3 && NODE_MAJOR_VERSION < 1
 
 char *BufferData(node::Buffer *b) {
     return b->data();
@@ -25,7 +25,7 @@ size_t BufferLength(v8::Local<v8::Object> buf_obj) {
     return buf->length();
 }
 
-#else // NODE_VERSION
+#elif NODE_MAJOR_VERSION < 3
 
 char *BufferData(node::Buffer *b) {
     return node::Buffer::Data(b->handle_);
@@ -41,6 +41,11 @@ size_t BufferLength(v8::Local<v8::Object> buf_obj) {
     v8::HandleScope scope;
     return node::Buffer::Length(buf_obj);
 }
+
+#else // NODE_VERSION
+
+#define BufferData node::Buffer::Data
+#define BufferLength node::Buffer::Length
 
 #endif // NODE_VERSION
 
