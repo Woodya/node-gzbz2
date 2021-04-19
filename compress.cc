@@ -31,10 +31,15 @@
 	HandleScope scope(isolate)
 
 #define STRING_EMPTY String::Empty(isolate)
-#define NEW_STRING(s) String::NewFromOneByte(isolate, (const uint8_t*)s)
+#if NODE_VERSION_AT_LEAST(8, 0, 0)
+# define NEW_STRING(s) String::NewFromOneByte(isolate, (const uint8_t*)(s), NewStringType::kNormal).ToLocalChecked()
+# define RETURN_ERROR(e) { isolate->ThrowException(Exception::Error(String::NewFromOneByte(isolate, (const uint8_t*)(e), NewStringType::kNormal).ToLocalChecked())); return; }
+#else
+# define NEW_STRING(s) String::NewFromOneByte(isolate, (const uint8_t*)s)
+# define RETURN_ERROR(e) { isolate->ThrowException(Exception::Error(String::NewFromOneByte(isolate, (const uint8_t*)e))); return; }
+#endif
 #define NEW_STRING_CONST NEW_STRING
 
-#define RETURN_ERROR(e) { isolate->ThrowException(Exception::Error(String::NewFromOneByte(isolate, (const uint8_t*)e))); return; }
 #define RETURN_VAL(v) args.GetReturnValue().Set(v)
 #define RETURN_THIS args.GetReturnValue().Set(args.This())
 #define RETURN_UNDEF return;
@@ -65,6 +70,30 @@
 #else
 #define BUFFER_NEW(...) node::Buffer::New(ISOLATE __VA_ARGS__)
 #define BUFFERP_T Buffer*
+#endif
+
+#if NODE_VERSION_AT_LEAST(4, 0, 0)
+#define INIT_ARGS Local<Object> target
+#else
+#define INIT_ARGS v8::Handle<v8::Object> target
+#endif
+
+#if NODE_VERSION_AT_LEAST(8, 0, 0)
+# define TO_OBJECT(a) (a).As<Object>()
+# define TO_INT32(a) (a).As<Int32>()->Value()
+# define TO_BOOL(a) (a).As<Boolean>()->Value()
+# define OBJ_GET(obj, key) options->Get(isolate->GetCurrentContext(), NEW_STRING_CONST(key)).ToLocalChecked()
+#else
+# define TO_OBJECT(a) (a)->ToObject()
+# define TO_INT32(a) (a)->Int32Value()
+# define TO_BOOL(a) (a)->BooleanValue()
+# define OBJ_GET(obj, key) options->Get(NEW_STRING_CONST(key))
+#endif
+
+#if NODE_VERSION_AT_LEAST(12, 0, 0)
+# define SET_OBJ_FUNC(obj, key, f) (obj)->Set(isolate->GetCurrentContext(), NEW_STRING(key), f->GetFunction(isolate->GetCurrentContext()).ToLocalChecked()).Check()
+#else
+# define SET_OBJ_FUNC(obj, key, f) (obj)->Set(NEW_STRING(key), f->GetFunction())
 #endif
 
 
@@ -108,7 +137,7 @@ public:
 #ifdef  WITH_GZIP
 class Gzip : public ObjectWrap {
  public:
-  static void Initialize(v8::Handle<v8::Object> target) {
+  static void Initialize(INIT_ARGS) {
     FUNC_INIT_START;
 
     Local<FunctionTemplate> t = FunctionTemplate::New(ISOLATE New);
@@ -119,7 +148,7 @@ class Gzip : public ObjectWrap {
     NODE_SET_PROTOTYPE_METHOD(t, "deflate", GzipDeflate);
     NODE_SET_PROTOTYPE_METHOD(t, "end", GzipEnd);
 
-    target->Set(NEW_STRING_CONST("Gzip"), t->GetFunction());
+    SET_OBJ_FUNC(target, "Gzip", t);
   }
 
   int GzipInit(int level) {
@@ -226,16 +255,16 @@ class Gzip : public ObjectWrap {
     gzip->use_buffers = true;
     if (args.Length() > 0) {
       THROW_IF_NOT (args[0]->IsObject(), "init argument must be an object");
-      Local<Object> options = args[0]->ToObject();
-      Local<Value> enc = options->Get(NEW_STRING_CONST("encoding"));
-      Local<Value> lev = options->Get(NEW_STRING_CONST("level"));
+      Local<Object> options = TO_OBJECT(args[0]);
+      Local<Value> enc = OBJ_GET(options, "encoding");
+      Local<Value> lev = OBJ_GET(options, "level");
 
       if ((enc->IsUndefined() || enc->IsNull()) == false) {
         gzip->encoding = ParseEncoding(ISOLATE enc);
         gzip->use_buffers = false;
       }
       if ((lev->IsUndefined() || lev->IsNull()) == false) {
-        level = lev->Int32Value();
+        level = TO_INT32(lev);
         THROW_IF_NOT_A (Z_NO_COMPRESSION <= level && level <= Z_BEST_COMPRESSION,
                         "invalid compression level: %d", level);
       }
@@ -256,7 +285,7 @@ class Gzip : public ObjectWrap {
     // deflate a buffer or a string?
     if (Buffer::HasInstance(args[0])) {
        // buffer
-       Local<Object> buffer = args[0]->ToObject();
+       Local<Object> buffer = TO_OBJECT(args[0]);
        len = BufferLength(buffer);
        buf = BufferData(buffer);
     } else {
@@ -341,7 +370,7 @@ class Gzip : public ObjectWrap {
 
 class Gunzip : public ObjectWrap {
  public:
-  static void Initialize(v8::Handle<v8::Object> target) {
+  static void Initialize(INIT_ARGS) {
     FUNC_INIT_START;
 
     Local<FunctionTemplate> t = FunctionTemplate::New(ISOLATE New);
@@ -352,7 +381,7 @@ class Gunzip : public ObjectWrap {
     NODE_SET_PROTOTYPE_METHOD(t, "inflate", GunzipInflate);
     NODE_SET_PROTOTYPE_METHOD(t, "end", GunzipEnd);
 
-    target->Set(NEW_STRING_CONST("Gunzip"), t->GetFunction());
+    SET_OBJ_FUNC(target, "Gunzip", t);
   }
 
   int GunzipInit() {
@@ -397,7 +426,8 @@ class Gunzip : public ObjectWrap {
 
         switch (ret) {
         case Z_NEED_DICT:
-          ret = Z_DATA_ERROR;     /* and fall through */
+          ret = Z_DATA_ERROR;
+          /* fall through */
         case Z_DATA_ERROR:
         case Z_MEM_ERROR:
           (void)inflateEnd(&strm);
@@ -437,8 +467,8 @@ class Gunzip : public ObjectWrap {
     gunzip->use_buffers = true;
     if (args.Length() > 0) {
       THROW_IF_NOT (args[0]->IsObject(), "init argument must be an object");
-      Local<Object> options = args[0]->ToObject();
-      Local<Value> enc = options->Get(NEW_STRING_CONST("encoding"));
+      Local<Object> options = TO_OBJECT(args[0]);
+      Local<Value> enc = OBJ_GET(options, "encoding");
 
       if ((enc->IsUndefined() || enc->IsNull()) == false) {
         gunzip->encoding = ParseEncoding(ISOLATE enc);
@@ -461,7 +491,7 @@ class Gunzip : public ObjectWrap {
     // inflate a buffer or a binary string?
     if (Buffer::HasInstance(args[0])) {
        // buffer
-       Local<Object> buffer = args[0]->ToObject();
+       Local<Object> buffer = TO_OBJECT(args[0]);
        len = BufferLength(buffer);
        buf = BufferData(buffer);
     } else {
@@ -531,7 +561,7 @@ class Gunzip : public ObjectWrap {
 #ifdef  WITH_BZIP
 class Bzip : public ObjectWrap {
  public:
-  static void Initialize(v8::Handle<v8::Object> target) {
+  static void Initialize(INIT_ARGS) {
     FUNC_INIT_START;
 
     Local<FunctionTemplate> t = FunctionTemplate::New(ISOLATE New);
@@ -542,7 +572,7 @@ class Bzip : public ObjectWrap {
     NODE_SET_PROTOTYPE_METHOD(t, "deflate", BzipDeflate);
     NODE_SET_PROTOTYPE_METHOD(t, "end", BzipEnd);
 
-    target->Set(NEW_STRING_CONST("Bzip"), t->GetFunction());
+    SET_OBJ_FUNC(target, "Bzip", t);
   }
 
   int BzipInit(int level, int work) {
@@ -647,21 +677,21 @@ class Bzip : public ObjectWrap {
     bzip->use_buffers = true;
     if (args.Length() > 0) {
       THROW_IF_NOT (args[0]->IsObject(), "init argument must be an object");
-      Local<Object> options = args[0]->ToObject();
-      Local<Value> enc = options->Get(NEW_STRING_CONST("encoding"));
-      Local<Value> lev = options->Get(NEW_STRING_CONST("level"));
-      Local<Value> wf = options->Get(NEW_STRING_CONST("workfactor"));
+      Local<Object> options = TO_OBJECT(args[0]);
+      Local<Value> enc = OBJ_GET(options, "encoding");
+      Local<Value> lev = OBJ_GET(options, "level");
+      Local<Value> wf = OBJ_GET(options, "workfactor");
 
       if ((enc->IsUndefined() || enc->IsNull()) == false) {
         bzip->encoding = ParseEncoding(ISOLATE enc);
         bzip->use_buffers = false;
       }
       if ((lev->IsUndefined() || lev->IsNull()) == false) {
-        level = lev->Int32Value();
+        level = TO_INT32(lev);
         THROW_IF_NOT_A (1 <= level && level <= 9, "invalid compression level: %d", level);
       }
       if ((wf->IsUndefined() || wf->IsNull()) == false) {
-        work = wf->Int32Value();
+        work = TO_INT32(wf);
         THROW_IF_NOT_A (0 <= work && work <= 250, "invalid workfactor: %d", work);
       }
     }
@@ -681,7 +711,7 @@ class Bzip : public ObjectWrap {
     // deflate a buffer or a string?
     if (Buffer::HasInstance(args[0])) {
        // buffer
-       Local<Object> buffer = args[0]->ToObject();
+       Local<Object> buffer = TO_OBJECT(args[0]);
        len = BufferLength(buffer);
        buf = BufferData(buffer);
     } else {
@@ -766,7 +796,7 @@ class Bzip : public ObjectWrap {
 
 class Bunzip : public ObjectWrap {
  public:
-  static void Initialize(v8::Handle<v8::Object> target) {
+  static void Initialize(INIT_ARGS) {
     FUNC_INIT_START;
 
     Local<FunctionTemplate> t = FunctionTemplate::New(ISOLATE New);
@@ -777,7 +807,7 @@ class Bunzip : public ObjectWrap {
     NODE_SET_PROTOTYPE_METHOD(t, "inflate", BunzipInflate);
     NODE_SET_PROTOTYPE_METHOD(t, "end", BunzipEnd);
 
-    target->Set(NEW_STRING_CONST("Bunzip"), t->GetFunction());
+    SET_OBJ_FUNC(target, "Bunzip", t);
   }
 
   int BunzipInit(int small) {
@@ -818,7 +848,8 @@ class Bunzip : public ObjectWrap {
         ret = BZ2_bzDecompress(&strm);
         switch (ret) {
         case BZ_PARAM_ERROR:
-          ret = BZ_DATA_ERROR;     /* and fall through */
+          ret = BZ_DATA_ERROR;
+          /* fall through */
         case BZ_DATA_ERROR:
         case BZ_DATA_ERROR_MAGIC:
         case BZ_MEM_ERROR:
@@ -861,16 +892,16 @@ class Bunzip : public ObjectWrap {
     bunzip->use_buffers = true;
     if (args.Length() > 0) {
       THROW_IF_NOT (args[0]->IsObject(), "init argument must be an object");
-      Local<Object> options = args[0]->ToObject();
-      Local<Value> enc = options->Get(NEW_STRING_CONST("encoding"));
-      Local<Value> sm = options->Get(NEW_STRING_CONST("small"));
+      Local<Object> options = TO_OBJECT(args[0]);
+      Local<Value> enc = OBJ_GET(options, "encoding");
+      Local<Value> sm = OBJ_GET(options, "small");
 
       if ((enc->IsUndefined() || enc->IsNull()) == false) {
         bunzip->encoding = ParseEncoding(ISOLATE enc);
         bunzip->use_buffers = false;
       }
       if ((sm->IsUndefined() || sm->IsNull()) == false) {
-        small = sm->BooleanValue() ? 1 : 0;
+        small = TO_BOOL(sm) ? 1 : 0;
       }
     }
     int r = bunzip->BunzipInit(small);
@@ -888,7 +919,7 @@ class Bunzip : public ObjectWrap {
     // inflate a buffer or a binary string?
     if (Buffer::HasInstance(args[0])) {
        // buffer
-       Local<Object> buffer = args[0]->ToObject();
+       Local<Object> buffer = TO_OBJECT(args[0]);
        len = BufferLength(buffer);
        buf = BufferData(buffer);
     } else {
@@ -955,7 +986,13 @@ class Bunzip : public ObjectWrap {
 #endif//WITH_BZIP
 
 extern "C" {
-  static void init(Handle<Object> target) {
+  static void init(
+#if NODE_VERSION_AT_LEAST(4, 0, 0)
+    Local<Object> target, Local<Value> module, void* priv
+#else
+    v8::Handle<v8::Object> target
+#endif
+  ) {
     #ifdef  WITH_GZIP
     Gzip::Initialize(target);
     Gunzip::Initialize(target);
