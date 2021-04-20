@@ -6,11 +6,11 @@ var fs = require("fs");
 var testfile = process.argv[2] || "test.js";
 var enc = process.argv[3];
 var data = fs.readFileSync(testfile, enc);
-util.puts("Got : " + data.length);
+console.log("Got : " + data.length);
 
 // Set output file
 var fd = fs.openSync(testfile + ".gz", "w", 0644);
-util.puts("File opened");
+console.log("File opened");
 
 // Create gzip stream
 var gzip = new gzbz2.Gzip;
@@ -18,25 +18,25 @@ gzip.init({level:3});
 
 // Pump data to be gzbz2
 var gzdata = gzip.deflate(data, enc);  // Do this as many times as required
-util.puts("Compressed chunk size : " + gzdata.length);
+console.log("Compressed chunk size : " + gzdata.length);
 fs.writeSync(fd, gzdata, 0, gzdata.length, null);
 
 // Get the last bit
 var gzlast = gzip.end();
-util.puts("Compressed chunk size: " + gzlast.length);
+console.log("Compressed chunk size: " + gzlast.length);
 fs.writeSync(fd, gzlast, 0, gzlast.length, null);
 fs.closeSync(fd);
-util.puts("File closed");
+console.log("File closed");
 
 // See if we can uncompress it ok
 var gunzip = new gzbz2.Gunzip;
 gunzip.init({encoding: enc});
 var testdata = fs.readFileSync(testfile + ".gz");
-util.puts("Test opened : " + testdata.length);
+console.log("Test opened : " + testdata.length);
 var inflated = gunzip.inflate(testdata, enc);
-util.puts("GZ.inflate.length: " + inflated.length);
+console.log("GZ.inflate.length: " + inflated.length);
 gunzip.end(); // no return value
 
 if (data.length != inflated.length) {
-    util.puts('error! input/output string lengths do not match');
+    console.log('error! input/output string lengths do not match');
 }
