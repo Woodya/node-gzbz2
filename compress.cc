@@ -19,13 +19,91 @@
 
 #define CHUNK 16384
 
+#include <node_object_wrap.h>
+#if NODE_VERSION_AT_LEAST(0, 11, 0)
+// for node 0.12.x and later
+#define FUNC(name) static void name(const FunctionCallbackInfo<Value>& args)
+#define FUNC_START \
+	Isolate* isolate = args.GetIsolate(); \
+	HandleScope scope(isolate)
+#define FUNC_INIT_START \
+	Isolate* isolate = target->GetIsolate(); \
+	HandleScope scope(isolate)
+
+#define STRING_EMPTY String::Empty(isolate)
+#if NODE_VERSION_AT_LEAST(8, 0, 0)
+# define NEW_STRING(s) String::NewFromOneByte(isolate, (const uint8_t*)(s), NewStringType::kNormal).ToLocalChecked()
+# define RETURN_ERROR(e) { isolate->ThrowException(Exception::Error(String::NewFromOneByte(isolate, (const uint8_t*)(e), NewStringType::kNormal).ToLocalChecked())); return; }
+#else
+# define NEW_STRING(s) String::NewFromOneByte(isolate, (const uint8_t*)s)
+# define RETURN_ERROR(e) { isolate->ThrowException(Exception::Error(String::NewFromOneByte(isolate, (const uint8_t*)e))); return; }
+#endif
+#define NEW_STRING_CONST NEW_STRING
+
+#define RETURN_VAL(v) args.GetReturnValue().Set(v)
+#define RETURN_THIS args.GetReturnValue().Set(args.This())
+#define RETURN_UNDEF return;
+#define RETURN_BUFFER RETURN_VAL
+#define ISOLATE isolate,
+#else
+// for node 0.10.x
+#define FUNC(name) static Handle<Value> name(const Arguments& args)
+#define FUNC_START HandleScope scope
+#define FUNC_INIT_START FUNC_START
+#define STRING_EMPTY String::Empty()
+#define NEW_STRING String::New
+#define NEW_STRING_CONST String::NewSymbol
+#define RETURN_ERROR(e) \
+	return ThrowException(Exception::Error( \
+		String::New(e)) \
+	)
+#define RETURN_VAL(v) return scope.Close(v)
+#define RETURN_THIS return args.This()
+#define RETURN_UNDEF RETURN_VAL( Undefined() );
+#define RETURN_BUFFER(b) RETURN_VAL((b)->handle_)
+#define ISOLATE
+#endif
+
+#if NODE_VERSION_AT_LEAST(3, 0, 0) // iojs3
+#define BUFFER_NEW(...) node::Buffer::New(ISOLATE __VA_ARGS__).ToLocalChecked()
+#define BUFFERP_T Local<Object>
+#else
+#define BUFFER_NEW(...) node::Buffer::New(ISOLATE __VA_ARGS__)
+#define BUFFERP_T Buffer*
+#endif
+
+#if NODE_VERSION_AT_LEAST(4, 0, 0)
+#define INIT_ARGS Local<Object> target
+#else
+#define INIT_ARGS v8::Handle<v8::Object> target
+#endif
+
+#if NODE_VERSION_AT_LEAST(8, 0, 0)
+# define TO_OBJECT(a) (a).As<Object>()
+# define TO_INT32(a) (a).As<Int32>()->Value()
+# define TO_BOOL(a) (a).As<Boolean>()->Value()
+# define OBJ_GET(obj, key) options->Get(isolate->GetCurrentContext(), NEW_STRING_CONST(key)).ToLocalChecked()
+#else
+# define TO_OBJECT(a) (a)->ToObject()
+# define TO_INT32(a) (a)->Int32Value()
+# define TO_BOOL(a) (a)->BooleanValue()
+# define OBJ_GET(obj, key) options->Get(NEW_STRING_CONST(key))
+#endif
+
+#if NODE_VERSION_AT_LEAST(12, 0, 0)
+# define SET_OBJ_FUNC(obj, key, f) (obj)->Set(isolate->GetCurrentContext(), NEW_STRING(key), f->GetFunction(isolate->GetCurrentContext()).ToLocalChecked()).Check()
+#else
+# define SET_OBJ_FUNC(obj, key, f) (obj)->Set(NEW_STRING(key), f->GetFunction())
+#endif
+
+
 #define THROW_IF_NOT(condition, text) if (!(condition)) { \
-      return ThrowException(Exception::Error (String::New(text))); \
+      RETURN_ERROR(text); \
     }
 #define THROW_IF_NOT_A(condition,...) if (!(condition)) { \
    char bufname[128] = {0}; \
    sprintf(bufname, __VA_ARGS__); \
-   return ThrowException(Exception::Error (String::New(bufname))); \
+   RETURN_ERROR(bufname); \
    }
 
 #define THROWS_IF_NOT_A(condition,...) if (!(condition)) { \
@@ -59,10 +137,10 @@ public:
 #ifdef  WITH_GZIP
 class Gzip : public ObjectWrap {
  public:
-  static void Initialize(v8::Handle<v8::Object> target) {
-    HandleScope scope;
+  static void Initialize(INIT_ARGS) {
+    FUNC_INIT_START;
 
-    Local<FunctionTemplate> t = FunctionTemplate::New(New);
+    Local<FunctionTemplate> t = FunctionTemplate::New(ISOLATE New);
 
     t->InstanceTemplate()->SetInternalFieldCount(1);
 
@@ -70,7 +148,7 @@ class Gzip : public ObjectWrap {
     NODE_SET_PROTOTYPE_METHOD(t, "deflate", GzipDeflate);
     NODE_SET_PROTOTYPE_METHOD(t, "end", GzipEnd);
 
-    target->Set(String::NewSymbol("Gzip"), t->GetFunction());
+    SET_OBJ_FUNC(target, "Gzip", t);
   }
 
   int GzipInit(int level) {
@@ -156,50 +234,50 @@ class Gzip : public ObjectWrap {
 
  protected:
 
-  static Handle<Value> New(const Arguments& args) {
-    HandleScope scope;
+  FUNC(New) {
+    FUNC_START;
 
     Gzip *gzip = new Gzip();
     gzip->Wrap(args.This());
 
-    return args.This();
+    RETURN_THIS;
   }
 
   /* options: encoding: string [null] if set output strings, else buffers
    *          level:    int    [-1]   (compression level)
    */
-  static Handle<Value> GzipInit(const Arguments& args) {
+  FUNC(GzipInit) {
     Gzip *gzip = ObjectWrap::Unwrap<Gzip>(args.This());
 
-    HandleScope scope;
+    FUNC_START;
 
     int level = Z_DEFAULT_COMPRESSION;
     gzip->use_buffers = true;
     if (args.Length() > 0) {
       THROW_IF_NOT (args[0]->IsObject(), "init argument must be an object");
-      Local<Object> options = args[0]->ToObject();
-      Local<Value> enc = options->Get(String::NewSymbol("encoding"));
-      Local<Value> lev = options->Get(String::NewSymbol("level"));
+      Local<Object> options = TO_OBJECT(args[0]);
+      Local<Value> enc = OBJ_GET(options, "encoding");
+      Local<Value> lev = OBJ_GET(options, "level");
 
       if ((enc->IsUndefined() || enc->IsNull()) == false) {
-        gzip->encoding = ParseEncoding(enc);
+        gzip->encoding = ParseEncoding(ISOLATE enc);
         gzip->use_buffers = false;
       }
       if ((lev->IsUndefined() || lev->IsNull()) == false) {
-        level = lev->Int32Value();
+        level = TO_INT32(lev);
         THROW_IF_NOT_A (Z_NO_COMPRESSION <= level && level <= Z_BEST_COMPRESSION,
                         "invalid compression level: %d", level);
       }
     }
 
     int r = gzip->GzipInit(level);
-    return scope.Close(Integer::New(r));
+    RETURN_VAL(Integer::New(ISOLATE r));
   }
 
-  static Handle<Value> GzipDeflate(const Arguments& args) {
+  FUNC(GzipDeflate) {
     Gzip *gzip = ObjectWrap::Unwrap<Gzip>(args.This());
 
-    HandleScope scope;
+    FUNC_START;
     BufferWrapper bw;
 
     char* buf;
@@ -207,17 +285,17 @@ class Gzip : public ObjectWrap {
     // deflate a buffer or a string?
     if (Buffer::HasInstance(args[0])) {
        // buffer
-       Local<Object> buffer = args[0]->ToObject();
+       Local<Object> buffer = TO_OBJECT(args[0]);
        len = BufferLength(buffer);
        buf = BufferData(buffer);
     } else {
       // string, default encoding is utf8
-      enum encoding enc = args.Length() == 1 ? UTF8 : ParseEncoding(args[1], UTF8);
-      len = DecodeBytes(args[0], enc);
+      enum encoding enc = args.Length() == 1 ? UTF8 : ParseEncoding(ISOLATE args[1], UTF8);
+      len = DecodeBytes(ISOLATE args[0], enc);
       THROW_IF_NOT_A (len >= 0, "invalid DecodeBytes result: %zd", len);
 
       bw.buffer = buf = new char[len];
-      ssize_t written = DecodeWrite(buf, len, args[0], enc);
+      ssize_t written = DecodeWrite(ISOLATE buf, len, args[0], enc);
       THROW_IF_NOT_A (written == len, "GzipDeflate.DecodeWrite: %zd != %zd", written, len);
     }
 
@@ -226,54 +304,54 @@ class Gzip : public ObjectWrap {
     try {
       r = gzip->GzipDeflate(buf, len, out);
     } catch( const std::string & msg ) {
-      return ThrowException(Exception::Error (String::New(msg.c_str())));
+      RETURN_ERROR(msg.c_str());
     }
     THROW_IF_NOT_A (r >= 0, "gzip deflate: error(%d) %s", r, gzip->strm.msg);
     THROW_IF_NOT_A (out.length >= 0, "gzip deflate: negative output size: %d", out.length);
 
     if (gzip->use_buffers) {
       // output compressed data in a buffer
-      Buffer* b = Buffer::New(out.length);
+      BUFFERP_T b = BUFFER_NEW(out.length);
       if (out.length != 0) {
         memcpy(BufferData(b), out.buffer, out.length);
       }
-      return scope.Close(b->handle_);
+      RETURN_BUFFER(b);
     } else if (out.length == 0) {
-      return scope.Close(String::Empty());
+      RETURN_VAL(STRING_EMPTY);
     } else {
       // output compressed data in a binary string
-      Local<Value> outString = Encode(out.buffer, out.length, gzip->encoding);
-      return scope.Close(outString);
+      Local<Value> outString = Encode(ISOLATE out.buffer, out.length, gzip->encoding);
+      RETURN_VAL(outString);
     }
   }
 
-  static Handle<Value> GzipEnd(const Arguments& args) {
+  FUNC(GzipEnd) {
     Gzip *gzip = ObjectWrap::Unwrap<Gzip>(args.This());
 
-    HandleScope scope;
+    FUNC_START;
     FBuffer out;
     int r;
     try {
       r = gzip->GzipEnd(out);
     } catch( const std::string & msg ) {
-      return ThrowException(Exception::Error (String::New(msg.c_str())));
+      RETURN_ERROR(msg.c_str());
     }
     THROW_IF_NOT_A (r >= 0, "gzip end: error(%d) %s", r, gzip->strm.msg);
     THROW_IF_NOT_A (out.length >= 0, "gzip end: negative output size: %d", out.length);
 
     if (gzip->use_buffers) {
       // output compressed data in a buffer
-      Buffer* b = Buffer::New(out.length);
+      BUFFERP_T b = BUFFER_NEW(out.length);
       if (out.length != 0) {
         memcpy(BufferData(b), out.buffer, out.length);
       }
-      return scope.Close(b->handle_);
+      RETURN_BUFFER(b);
     } else if (out.length == 0) {
-      return scope.Close(String::Empty());
+      RETURN_VAL(STRING_EMPTY);
     } else {
       // output compressed data in a binary string
-      Local<Value> outString = Encode(out.buffer, out.length, gzip->encoding);
-      return scope.Close(outString);
+      Local<Value> outString = Encode(ISOLATE out.buffer, out.length, gzip->encoding);
+      RETURN_VAL(outString);
     }
   }
 
@@ -292,10 +370,10 @@ class Gzip : public ObjectWrap {
 
 class Gunzip : public ObjectWrap {
  public:
-  static void Initialize(v8::Handle<v8::Object> target) {
-    HandleScope scope;
+  static void Initialize(INIT_ARGS) {
+    FUNC_INIT_START;
 
-    Local<FunctionTemplate> t = FunctionTemplate::New(New);
+    Local<FunctionTemplate> t = FunctionTemplate::New(ISOLATE New);
 
     t->InstanceTemplate()->SetInternalFieldCount(1);
 
@@ -303,7 +381,7 @@ class Gunzip : public ObjectWrap {
     NODE_SET_PROTOTYPE_METHOD(t, "inflate", GunzipInflate);
     NODE_SET_PROTOTYPE_METHOD(t, "end", GunzipEnd);
 
-    target->Set(String::NewSymbol("Gunzip"), t->GetFunction());
+    SET_OBJ_FUNC(target, "Gunzip", t);
   }
 
   int GunzipInit() {
@@ -348,7 +426,8 @@ class Gunzip : public ObjectWrap {
 
         switch (ret) {
         case Z_NEED_DICT:
-          ret = Z_DATA_ERROR;     /* and fall through */
+          ret = Z_DATA_ERROR;
+          /* fall through */
         case Z_DATA_ERROR:
         case Z_MEM_ERROR:
           (void)inflateEnd(&strm);
@@ -369,42 +448,42 @@ class Gunzip : public ObjectWrap {
 
  protected:
 
-  static Handle<Value> New(const Arguments& args) {
-    HandleScope scope;
+  FUNC(New) {
+    FUNC_START;
 
     Gunzip *gunzip = new Gunzip();
     gunzip->Wrap(args.This());
 
-    return args.This();
+    RETURN_THIS;
   }
 
   /* options: encoding: string [null], if set output strings, else buffers
    */
-  static Handle<Value> GunzipInit(const Arguments& args) {
+  FUNC(GunzipInit) {
     Gunzip *gunzip = ObjectWrap::Unwrap<Gunzip>(args.This());
 
-    HandleScope scope;
+    FUNC_START;
 
     gunzip->use_buffers = true;
     if (args.Length() > 0) {
       THROW_IF_NOT (args[0]->IsObject(), "init argument must be an object");
-      Local<Object> options = args[0]->ToObject();
-      Local<Value> enc = options->Get(String::NewSymbol("encoding"));
+      Local<Object> options = TO_OBJECT(args[0]);
+      Local<Value> enc = OBJ_GET(options, "encoding");
 
       if ((enc->IsUndefined() || enc->IsNull()) == false) {
-        gunzip->encoding = ParseEncoding(enc);
+        gunzip->encoding = ParseEncoding(ISOLATE enc);
         gunzip->use_buffers = false;
       }
     }
 
     int r = gunzip->GunzipInit();
-    return scope.Close(Integer::New(r));
+    RETURN_VAL(Integer::New(ISOLATE r));
   }
 
-  static Handle<Value> GunzipInflate(const Arguments& args) {
+  FUNC(GunzipInflate) {
     Gunzip *gunzip = ObjectWrap::Unwrap<Gunzip>(args.This());
 
-    HandleScope scope;
+    FUNC_START;
     BufferWrapper bw;
 
     char* buf;
@@ -412,17 +491,17 @@ class Gunzip : public ObjectWrap {
     // inflate a buffer or a binary string?
     if (Buffer::HasInstance(args[0])) {
        // buffer
-       Local<Object> buffer = args[0]->ToObject();
+       Local<Object> buffer = TO_OBJECT(args[0]);
        len = BufferLength(buffer);
        buf = BufferData(buffer);
     } else {
       // string, default encoding is binary. this is much worse than using a buffer
-      enum encoding enc = args.Length() == 1 ? BINARY : ParseEncoding(args[1], BINARY);
-      len = DecodeBytes(args[0], enc);
+      enum encoding enc = args.Length() == 1 ? BINARY : ParseEncoding(ISOLATE args[1], BINARY);
+      len = DecodeBytes(ISOLATE args[0], enc);
       THROW_IF_NOT_A (len >= 0, "invalid DecodeBytes result: %zd", len);
 
       bw.buffer = buf = new char[len];
-      ssize_t written = DecodeWrite(buf, len, args[0], enc);
+      ssize_t written = DecodeWrite(ISOLATE buf, len, args[0], enc);
       THROW_IF_NOT_A (written == len, "GunzipInflate.DecodeWrite: %zd != %zd", written, len);
     }
 
@@ -431,37 +510,37 @@ class Gunzip : public ObjectWrap {
     try {
       r = gunzip->GunzipInflate(buf, len, out);
     } catch( const std::string & msg ) {
-      return ThrowException(Exception::Error (String::New(msg.c_str())));
+      RETURN_ERROR(msg.c_str());
     }
     THROW_IF_NOT_A (r >= 0, "gunzip inflate: error(%d) %s", r, gunzip->strm.msg);
     THROW_IF_NOT_A (out.length >= 0, "gunzip inflate: negative output size: %d", out.length);
 
     if (gunzip->use_buffers) {
       // output decompressed data in a buffer
-      Buffer* b = Buffer::New(out.length);
+      BUFFERP_T b = BUFFER_NEW(out.length);
       if (out.length != 0) {
         memcpy(BufferData(b), out.buffer, out.length);
       }
-      return scope.Close(b->handle_);
+      RETURN_BUFFER(b);
     } else if (out.length == 0) {
-      return scope.Close(String::Empty());
+      RETURN_VAL(STRING_EMPTY);
     } else {
       // output decompressed data in an encoded string
-      Local<Value> outString = Encode(out.buffer, out.length, gunzip->encoding);
-      return scope.Close(outString);
+      Local<Value> outString = Encode(ISOLATE out.buffer, out.length, gunzip->encoding);
+      RETURN_VAL(outString);
     }
   }
 
-  static Handle<Value> GunzipEnd(const Arguments& args) {
+  FUNC(GunzipEnd) {
     Gunzip *gunzip = ObjectWrap::Unwrap<Gunzip>(args.This());
 
-    HandleScope scope;
+    FUNC_START;
     try {
       gunzip->GunzipEnd();
     } catch( const std::string & msg ) {
-      return ThrowException(Exception::Error (String::New(msg.c_str())));
+      RETURN_ERROR(msg.c_str());
     }
-    return scope.Close(Undefined());
+    RETURN_UNDEF;
   }
 
   Gunzip() : ObjectWrap(), use_buffers(true), encoding(BINARY) {
@@ -482,10 +561,10 @@ class Gunzip : public ObjectWrap {
 #ifdef  WITH_BZIP
 class Bzip : public ObjectWrap {
  public:
-  static void Initialize(v8::Handle<v8::Object> target) {
-    HandleScope scope;
+  static void Initialize(INIT_ARGS) {
+    FUNC_INIT_START;
 
-    Local<FunctionTemplate> t = FunctionTemplate::New(New);
+    Local<FunctionTemplate> t = FunctionTemplate::New(ISOLATE New);
 
     t->InstanceTemplate()->SetInternalFieldCount(1);
 
@@ -493,7 +572,7 @@ class Bzip : public ObjectWrap {
     NODE_SET_PROTOTYPE_METHOD(t, "deflate", BzipDeflate);
     NODE_SET_PROTOTYPE_METHOD(t, "end", BzipEnd);
 
-    target->Set(String::NewSymbol("Bzip"), t->GetFunction());
+    SET_OBJ_FUNC(target, "Bzip", t);
   }
 
   int BzipInit(int level, int work) {
@@ -576,55 +655,55 @@ class Bzip : public ObjectWrap {
 
  protected:
 
-  static Handle<Value> New(const Arguments& args) {
-    HandleScope scope;
+  FUNC(New) {
+    FUNC_START;
 
     Bzip *bzip = new Bzip();
     bzip->Wrap(args.This());
 
-    return args.This();
+    RETURN_THIS;
   }
 
   /* options: encoding: string [null] if set output strings, else buffers
    *          level:    int    [-1]   (compression level)
    */
-  static Handle<Value> BzipInit(const Arguments& args) {
+  FUNC(BzipInit) {
     Bzip *bzip = ObjectWrap::Unwrap<Bzip>(args.This());
 
-    HandleScope scope;
+    FUNC_START;
 
     int level = 1;
     int work = 30;
     bzip->use_buffers = true;
     if (args.Length() > 0) {
       THROW_IF_NOT (args[0]->IsObject(), "init argument must be an object");
-      Local<Object> options = args[0]->ToObject();
-      Local<Value> enc = options->Get(String::NewSymbol("encoding"));
-      Local<Value> lev = options->Get(String::NewSymbol("level"));
-      Local<Value> wf = options->Get(String::NewSymbol("workfactor"));
+      Local<Object> options = TO_OBJECT(args[0]);
+      Local<Value> enc = OBJ_GET(options, "encoding");
+      Local<Value> lev = OBJ_GET(options, "level");
+      Local<Value> wf = OBJ_GET(options, "workfactor");
 
       if ((enc->IsUndefined() || enc->IsNull()) == false) {
-        bzip->encoding = ParseEncoding(enc);
+        bzip->encoding = ParseEncoding(ISOLATE enc);
         bzip->use_buffers = false;
       }
       if ((lev->IsUndefined() || lev->IsNull()) == false) {
-        level = lev->Int32Value();
+        level = TO_INT32(lev);
         THROW_IF_NOT_A (1 <= level && level <= 9, "invalid compression level: %d", level);
       }
       if ((wf->IsUndefined() || wf->IsNull()) == false) {
-        work = wf->Int32Value();
+        work = TO_INT32(wf);
         THROW_IF_NOT_A (0 <= work && work <= 250, "invalid workfactor: %d", work);
       }
     }
 
     int r = bzip->BzipInit(level, work);
-    return scope.Close(Integer::New(r));
+    RETURN_VAL(Integer::New(ISOLATE r));
   }
 
-  static Handle<Value> BzipDeflate(const Arguments& args) {
+  FUNC(BzipDeflate) {
     Bzip *bzip = ObjectWrap::Unwrap<Bzip>(args.This());
 
-    HandleScope scope;
+    FUNC_START;
     BufferWrapper bw;
 
     char* buf;
@@ -632,17 +711,17 @@ class Bzip : public ObjectWrap {
     // deflate a buffer or a string?
     if (Buffer::HasInstance(args[0])) {
        // buffer
-       Local<Object> buffer = args[0]->ToObject();
+       Local<Object> buffer = TO_OBJECT(args[0]);
        len = BufferLength(buffer);
        buf = BufferData(buffer);
     } else {
       // string, default encoding is utf8
-      enum encoding enc = args.Length() == 1 ? UTF8 : ParseEncoding(args[1], UTF8);
-      len = DecodeBytes(args[0], enc);
+      enum encoding enc = args.Length() == 1 ? UTF8 : ParseEncoding(ISOLATE args[1], UTF8);
+      len = DecodeBytes(ISOLATE args[0], enc);
       THROW_IF_NOT_A (len >= 0, "invalid DecodeBytes result: %zd", len);
 
       bw.buffer = buf = new char[len];
-      ssize_t written = DecodeWrite(buf, len, args[0], enc);
+      ssize_t written = DecodeWrite(ISOLATE buf, len, args[0], enc);
       THROW_IF_NOT_A (written == len, "BzipDeflate.DecodeWrite: %zd != %zd", written, len);
     }
 
@@ -651,54 +730,54 @@ class Bzip : public ObjectWrap {
     try {
       r = bzip->BzipDeflate(buf, len, out);
     } catch( const std::string & msg ) {
-      return ThrowException(Exception::Error (String::New(msg.c_str())));
+      RETURN_ERROR(msg.c_str());
     }
     THROW_IF_NOT_A (r >= 0, "bzip deflate: error(%d)", r);
     THROW_IF_NOT_A (out.length >= 0, "bzip deflate: negative output size: %d", out.length);
 
     if (bzip->use_buffers) {
       // output compressed data in a buffer
-      Buffer* b = Buffer::New(out.length);
+      BUFFERP_T b = BUFFER_NEW(out.length);
       if (out.length != 0) {
         memcpy(BufferData(b), out.buffer, out.length);
       }
-      return scope.Close(b->handle_);
+      RETURN_BUFFER(b);
     } else if (out.length == 0) {
-      return scope.Close(String::Empty());
+      RETURN_VAL(STRING_EMPTY);
     } else {
       // output compressed data in a binary string
-      Local<Value> outString = Encode(out.buffer, out.length, bzip->encoding);
-      return scope.Close(outString);
+      Local<Value> outString = Encode(ISOLATE out.buffer, out.length, bzip->encoding);
+      RETURN_VAL(outString);
     }
   }
 
-  static Handle<Value> BzipEnd(const Arguments& args) {
+  FUNC(BzipEnd) {
     Bzip *bzip = ObjectWrap::Unwrap<Bzip>(args.This());
 
-    HandleScope scope;
+    FUNC_START;
     FBuffer out;
     int r;
     try {
       r = bzip->BzipEnd(out);
     } catch( const std::string & msg ) {
-      return ThrowException(Exception::Error (String::New(msg.c_str())));
+      RETURN_ERROR(msg.c_str());
     }
     THROW_IF_NOT_A (r >= 0, "bzip end: error(%d)", r);
     THROW_IF_NOT_A (out.length >= 0, "bzip end: negative output size: %d", out.length);
 
     if (bzip->use_buffers) {
       // output compressed data in a buffer
-      Buffer* b = Buffer::New(out.length);
+      BUFFERP_T b = BUFFER_NEW(out.length);
       if (out.length != 0) {
         memcpy(BufferData(b), out.buffer, out.length);
       }
-      return scope.Close(b->handle_);
+      RETURN_BUFFER(b);
     } else if (out.length == 0) {
-      return scope.Close(String::Empty());
+      RETURN_VAL(STRING_EMPTY);
     } else {
       // output compressed data in a binary string
-      Local<Value> outString = Encode(out.buffer, out.length, bzip->encoding);
-      return scope.Close(outString);
+      Local<Value> outString = Encode(ISOLATE out.buffer, out.length, bzip->encoding);
+      RETURN_VAL(outString);
     }
   }
 
@@ -717,10 +796,10 @@ class Bzip : public ObjectWrap {
 
 class Bunzip : public ObjectWrap {
  public:
-  static void Initialize(v8::Handle<v8::Object> target) {
-    HandleScope scope;
+  static void Initialize(INIT_ARGS) {
+    FUNC_INIT_START;
 
-    Local<FunctionTemplate> t = FunctionTemplate::New(New);
+    Local<FunctionTemplate> t = FunctionTemplate::New(ISOLATE New);
 
     t->InstanceTemplate()->SetInternalFieldCount(1);
 
@@ -728,7 +807,7 @@ class Bunzip : public ObjectWrap {
     NODE_SET_PROTOTYPE_METHOD(t, "inflate", BunzipInflate);
     NODE_SET_PROTOTYPE_METHOD(t, "end", BunzipEnd);
 
-    target->Set(String::NewSymbol("Bunzip"), t->GetFunction());
+    SET_OBJ_FUNC(target, "Bunzip", t);
   }
 
   int BunzipInit(int small) {
@@ -769,7 +848,8 @@ class Bunzip : public ObjectWrap {
         ret = BZ2_bzDecompress(&strm);
         switch (ret) {
         case BZ_PARAM_ERROR:
-          ret = BZ_DATA_ERROR;     /* and fall through */
+          ret = BZ_DATA_ERROR;
+          /* fall through */
         case BZ_DATA_ERROR:
         case BZ_DATA_ERROR_MAGIC:
         case BZ_MEM_ERROR:
@@ -791,47 +871,47 @@ class Bunzip : public ObjectWrap {
 
  protected:
 
-  static Handle<Value> New(const Arguments& args) {
-    HandleScope scope;
+  FUNC(New) {
+    FUNC_START;
 
     Bunzip *bunzip = new Bunzip();
     bunzip->Wrap(args.This());
 
-    return args.This();
+    RETURN_THIS;
   }
 
   /* options: encoding:   string  [null], if set output strings, else buffers
    *          small:      boolean [false], bunzip in small mode
    */
-  static Handle<Value> BunzipInit(const Arguments& args) {
+  FUNC(BunzipInit) {
     Bunzip *bunzip = ObjectWrap::Unwrap<Bunzip>(args.This());
 
-    HandleScope scope;
+    FUNC_START;
 
     int small = 0;
     bunzip->use_buffers = true;
     if (args.Length() > 0) {
       THROW_IF_NOT (args[0]->IsObject(), "init argument must be an object");
-      Local<Object> options = args[0]->ToObject();
-      Local<Value> enc = options->Get(String::NewSymbol("encoding"));
-      Local<Value> sm = options->Get(String::NewSymbol("small"));
+      Local<Object> options = TO_OBJECT(args[0]);
+      Local<Value> enc = OBJ_GET(options, "encoding");
+      Local<Value> sm = OBJ_GET(options, "small");
 
       if ((enc->IsUndefined() || enc->IsNull()) == false) {
-        bunzip->encoding = ParseEncoding(enc);
+        bunzip->encoding = ParseEncoding(ISOLATE enc);
         bunzip->use_buffers = false;
       }
       if ((sm->IsUndefined() || sm->IsNull()) == false) {
-        small = sm->BooleanValue() ? 1 : 0;
+        small = TO_BOOL(sm) ? 1 : 0;
       }
     }
     int r = bunzip->BunzipInit(small);
-    return scope.Close(Integer::New(r));
+    RETURN_VAL(Integer::New(ISOLATE r));
   }
 
-  static Handle<Value> BunzipInflate(const Arguments& args) {
+  FUNC(BunzipInflate) {
     Bunzip *bunzip = ObjectWrap::Unwrap<Bunzip>(args.This());
 
-    HandleScope scope;
+    FUNC_START;
     BufferWrapper bw;
 
     char* buf;
@@ -839,17 +919,17 @@ class Bunzip : public ObjectWrap {
     // inflate a buffer or a binary string?
     if (Buffer::HasInstance(args[0])) {
        // buffer
-       Local<Object> buffer = args[0]->ToObject();
+       Local<Object> buffer = TO_OBJECT(args[0]);
        len = BufferLength(buffer);
        buf = BufferData(buffer);
     } else {
       // string, default encoding is binary. this is much worse than using a buffer
-      enum encoding enc = args.Length() == 1 ? BINARY : ParseEncoding(args[1], BINARY);
-      len = DecodeBytes(args[0], enc);
+      enum encoding enc = args.Length() == 1 ? BINARY : ParseEncoding(ISOLATE args[1], BINARY);
+      len = DecodeBytes(ISOLATE args[0], enc);
       THROW_IF_NOT_A (len >= 0, "invalid DecodeBytes result: %zd", len);
 
       bw.buffer = buf = new char[len];
-      ssize_t written = DecodeWrite(buf, len, args[0], enc);
+      ssize_t written = DecodeWrite(ISOLATE buf, len, args[0], enc);
       THROW_IF_NOT_A(written == len, "BunzipInflate.DecodeWrite: %zd != %zd", written, len);
     }
 
@@ -858,37 +938,37 @@ class Bunzip : public ObjectWrap {
     try {
       r = bunzip->BunzipInflate(buf, len, out);
     } catch( const std::string & msg ) {
-      return ThrowException(Exception::Error (String::New(msg.c_str())));
+      RETURN_ERROR(msg.c_str());
     }
     THROW_IF_NOT_A (r >= 0, "bunzip inflate: error(%d)", r);
     THROW_IF_NOT_A (out.length >= 0, "bunzip inflate: negative output size: %d", out.length);
 
     if (bunzip->use_buffers) {
       // output decompressed data in a buffer
-      Buffer* b = Buffer::New(out.length);
+      BUFFERP_T b = BUFFER_NEW(out.length);
       if (out.length != 0) {
         memcpy(BufferData(b), out.buffer, out.length);
       }
-      return scope.Close(b->handle_);
+      RETURN_BUFFER(b);
     } else if (out.length == 0) {
-      return scope.Close(String::Empty());
+      RETURN_VAL(STRING_EMPTY);
     } else {
       // output decompressed data in an encoded string
-      Local<Value> outString = Encode(out.buffer, out.length, bunzip->encoding);
-      return scope.Close(outString);
+      Local<Value> outString = Encode(ISOLATE out.buffer, out.length, bunzip->encoding);
+      RETURN_VAL(outString);
     }
   }
 
-  static Handle<Value> BunzipEnd(const Arguments& args) {
+  FUNC(BunzipEnd) {
     Bunzip *bunzip = ObjectWrap::Unwrap<Bunzip>(args.This());
 
-    HandleScope scope;
+    FUNC_START;
     try {
       bunzip->BunzipEnd();
     } catch( const std::string & msg ) {
-      return ThrowException(Exception::Error (String::New(msg.c_str())));
+      RETURN_ERROR(msg.c_str());
     }
-    return scope.Close(Undefined());
+    RETURN_UNDEF;
   }
 
   Bunzip() : ObjectWrap(), use_buffers(true), encoding(BINARY) {
@@ -906,8 +986,13 @@ class Bunzip : public ObjectWrap {
 #endif//WITH_BZIP
 
 extern "C" {
-  static void init(Handle<Object> target) {
-    HandleScope scope;
+  static void init(
+#if NODE_VERSION_AT_LEAST(4, 0, 0)
+    Local<Object> target, Local<Value> module, void* priv
+#else
+    v8::Handle<v8::Object> target
+#endif
+  ) {
     #ifdef  WITH_GZIP
     Gzip::Initialize(target);
     Gunzip::Initialize(target);
